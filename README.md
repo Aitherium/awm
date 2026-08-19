@@ -73,5 +73,5 @@ the same file the ARC-AGI-3 solving agent runs, value head included — see
 
 ## License
 
-MIT (see `LICENSE`) — proposed, not yet finalized. See `PROVENANCE.md` for
-the one file with an external concept-attribution.
+MIT (see `LICENSE`). See `world_model/training/PROVENANCE.md` for the one
+file with an external concept-attribution.
