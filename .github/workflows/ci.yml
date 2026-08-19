@@ -19,12 +19,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install package with torch
+      - name: Install package with torch and pytest
         # torch is installed explicitly, not left optional: pytest.importorskip
         # in tests/ means a missing torch SKIPS every real test instead of
         # failing, and a CI run that reports green while skipping everything
         # is worse than one that fails -- it looks like coverage and is none.
-        run: pip install -e ".[torch]"
+        run: pip install -e ".[dev]"
 
       - name: Run tests
         run: python -m pytest tests/ -v
