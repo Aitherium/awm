@@ -7,8 +7,11 @@ protocol, no framework lock-in.
 
 - **`world_model.core.lewm.LeWorldModel`** — a LeWM-style JEPA (joint-embedding
   predictive architecture): a two-term loss (next-latent MSE + SIGReg
-  isotropy regularization) plus a CEM planner. This is the engine behind an
-  ARC-AGI-3 solving agent.
+  isotropy regularization), a CEM planner, and an optional value head
+  (`_ValueHead`/`_FsAdapter`) for value-guided planning — trained on returns
+  over a frozen latent, off unless you construct with a value config. This
+  is the full engine behind an ARC-AGI-3 solving agent, not a cut-down demo
+  of it.
 - **`world_model.core.mlp.MLPWorldModel`** — a lighter embedding-MLP
   transition model with a tabular cold-start fallback (tabular → hybrid →
   neural), for when a full JEPA is more machinery than the problem needs.
@@ -52,18 +55,21 @@ print(model.surprise(state, action, next_state))
 
 ## Why this exists
 
-This is the world-model core out of a larger internal agent platform
-(Aitherium), extracted because the *findings* from using it against
-ARC-AGI-3 are more useful shared than kept — see
-[`RESULTS.md`](RESULTS.md) for the honest version, including the two
-negative results that mattered more than any positive one.
+The goal is to help someone bootstrap their own world model — a working
+engine, a planner, an optional value head, a contract to write your own
+adapter against, and no framework lock-in — not a stripped demo pointing at
+a hosted service. This is the actual core out of a larger internal agent
+platform (Aitherium), extracted whole rather than trimmed, plus the
+*findings* from running it against ARC-AGI-3: see [`RESULTS.md`](RESULTS.md)
+for the honest version, including two negative results that mattered more
+than any positive one.
 
 ## Status
 
 Research code. The contracts and degrade-loudly discipline are load-bearing
-and tested (`tests/`); the engines themselves are still moving. `lewm.py`
-has a further fork (adding a value head) used inside the solving agent that
-has not been merged back here yet — noted in `world_model/__init__.py`.
+and tested (`tests/`); the engines themselves are still moving. `lewm.py` is
+the same file the ARC-AGI-3 solving agent runs, value head included — see
+`world_model/__init__.py` for what's on by default vs. opt-in.
 
 ## License
 
