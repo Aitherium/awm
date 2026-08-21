@@ -1,106 +1,49 @@
-# awm — a small, dependency-light world model
+# awm
 
-`world_model` is a learned-dynamics library: encode an observation to a
-latent, predict the next latent given an action, score how surprised the
-model was, optionally plan in latent space. Two engines, a small adapter
-protocol, no framework lock-in.
+A portable, scoped agent memory. SQLite, no service, no network.
 
-- **`world_model.core.lewm.LeWorldModel`** — a LeWM-style JEPA (joint-embedding
-  predictive architecture): a two-term loss (next-latent MSE + SIGReg
-  isotropy regularization), a CEM planner, and an optional value head
-  (`_ValueHead`/`_FsAdapter`) for value-guided planning — trained on returns
-  over a frozen latent, off unless you construct with a value config. This
-  is the full engine behind an ARC-AGI-3 solving agent, not a cut-down demo
-  of it.
-- **`world_model.core.mlp.MLPWorldModel`** — a lighter embedding-MLP
-  transition model with a tabular cold-start fallback (tabular → hybrid →
-  neural), for when a full JEPA is more machinery than the problem needs.
-- **`world_model.contracts`** — the two Protocols (`WorldModel`,
-  `EnvironmentAdapter`) everything else is written against. Write an adapter
-  for your environment; nothing in an engine has to change.
-- **`world_model.adapters.code_world`** — an example adapter mapping a
-  codebase (landmarks + code chunks) into the engine's observation/action
-  space. Reference implementation, not a complete environment.
-- **`world_model.training.online`** — an optional, flag-gated
-  surprise-modulated online learning-rate controller. Off by default. See
-  [`world_model/training/PROVENANCE.md`](world_model/training/PROVENANCE.md)
-  for concept provenance and license boundary — the *concepts* (not code)
-  are credited to an external, restricted-license research project; this
-  implementation is clean-room.
-
-Every engine follows one rule: **degrade loudly, never silently.** A missing
-torch install or an unreadable checkpoint sets `ok = False` and returns
-`None`/`[]` — it never raises into a caller's turn loop and never fabricates
-a prediction. That property mattered more than any architecture choice; see
-[`RESULTS.md`](RESULTS.md).
-
-## Install
+```
+platform:*:*               everyone
+{tenant}:*:*               one org
+{tenant}:{user}:*          one person
+{tenant}:{user}:{project}  one piece of work
+```
 
 ```bash
-pip install -e ".[torch]"   # torch + numpy are optional; engines degrade loudly without them
+pip install awm
+
+awm remember --scope acme:alice:orchestrator --key recipe --value "rank 16, lr 2e-5"
+awm recall   --scope acme:alice:orchestrator
 ```
 
-## Quick use
+## Two rules, deliberately asymmetric
 
-```python
-from world_model.core.mlp import MLPWorldModel
+**A write lands at exactly one scope.** Writing "somewhere in this subtree" is
+how a memory becomes visible to a scope its author never considered.
 
-model = MLPWorldModel()
-model.observe(state, action, next_state, reward=0.0, done=False)
-model.train_step()
-z = model.encode(state)
-pred = model.predict(z, action)
-print(model.surprise(state, action, next_state))
-```
+**A read includes ancestors, weighted by distance.** A project query surfaces
+the user's preferences and the platform's conventions — that is the point of a
+hierarchy — but a platform fact must not outrank a project fact just because it
+was written first.
 
-## Why this exists
+## One property that is security, not tidiness
 
-The goal is to help someone bootstrap their own world model — a working
-engine, a planner, an optional value head, a contract to write your own
-adapter against, and no framework lock-in — not a stripped demo pointing at
-a hosted service. This is the actual core out of a larger internal agent
-platform (Aitherium), extracted whole rather than trimmed, plus the
-*findings* from running it against ARC-AGI-3: see [`RESULTS.md`](RESULTS.md)
-for the honest version, including two negative results that mattered more
-than any positive one.
+**Siblings never see each other.** `acme:alice:*` and `acme:bob:*` share an
+ancestor and nothing else. The scope check is segment-wise, never a string
+prefix, because `"acmecorp:...".startswith("acme")` is `True` — that is one
+customer's memory entering another's context, silently, with the answer still
+looking like an answer. SQL narrows by an exact computed set, never a `LIKE`.
 
-## Status
+`platform` is a reserved sentinel tenant meaning "everyone", not an
+organisation. Treating it as a literal tenant name made the root of the
+hierarchy invisible from every scope — every recall still returned results, just
+never the platform's. The self-test carries that case.
 
-Research code. The contracts and degrade-loudly discipline are load-bearing
-and tested (`tests/`); the engines themselves are still moving. `lewm.py` is
-the same file the ARC-AGI-3 solving agent runs, value head included — see
-`world_model/__init__.py` for what's on by default vs. opt-in.
+## Licence
 
-## License
+Apache-2.0.
 
-MIT (see `LICENSE`). See `world_model/training/PROVENANCE.md` for the one
-file with an external concept-attribution.
-
-<!-- aitherium-ecosystem:start -->
-## Aitherium open-source ecosystem
-
-This repo is one piece of a connected set. All public, MIT/BSL-licensed:
-
-| repo | what it is | pages |
-|---|---|---|
-| [awrecover](https://github.com/Aitherium/awrecover) | Labelled snapshots with an all-or-nothing restore | [docs](https://aitherium.github.io/awrecover/) |
-| [awshare](https://github.com/Aitherium/awshare) | Publish an artifact and fetch it back verified | [docs](https://aitherium.github.io/awshare/) |
-| [awseal](https://github.com/Aitherium/awseal) | Sign an artifact so a stranger can verify it | [docs](https://aitherium.github.io/awseal/) |
-| [awnode](https://github.com/Aitherium/awnode) | Lightweight local gateway — your apps to backends you chose | [docs](https://aitherium.github.io/awnode/) |
-| [awnix](https://github.com/Aitherium/awnix) | A bootable, immutable Linux base for agent-run machines | [docs](https://aitherium.github.io/awnix/) |
-| [awdk](https://github.com/Aitherium/awdk) | Build AI agent fleets — 3 lines, any backend | [docs](https://aitherium.github.io/awdk/) |
-| [awskills](https://github.com/Aitherium/awskills) | Free agent skills, scripts & automations | [docs](https://aitherium.github.io/awskills/) |
-| [AitherZero](https://github.com/Aitherium/AitherZero) | PowerShell 7+ automation framework | [docs](https://aitherium.github.io/AitherZero/) |
-| [awgit](https://github.com/Aitherium/awgit) | Semantic version control on top of git | [docs](https://aitherium.github.io/awgit/) |
-| [awgraph](https://github.com/Aitherium/awgraph) | Code knowledge graph for AI agents | [docs](https://aitherium.github.io/awgraph/) |
-| [aitherkvcache](https://github.com/Aitherium/aitherkvcache) | Near-optimal KV cache quantization | [docs](https://aitherium.github.io/aitherkvcache/) |
-| [awrelay](https://github.com/Aitherium/awrelay) | Agent-to-agent messaging over any chat server | [docs](https://aitherium.github.io/awrelay/) |
-| [awm](https://github.com/Aitherium/awm) | A small world model (LeWM JEPA + MLP) to bootstrap your own | [docs](https://aitherium.github.io/awm/) |
-| [AitherConnect](https://github.com/Aitherium/AitherConnect) | Browser extension: federated AI search & desktop bridge | — |
-| [homebrew-tap](https://github.com/Aitherium/homebrew-tap) | `brew tap aitherium/tap` | — |
-
-Built by [Aitherium](https://aitherium.com).
-<!-- aitherium-ecosystem:end -->
+---
 
 <!-- aither-ecosystem:start GENERATED from the ecosystem registry. Edits here are overwritten; change the registry instead. -->
 

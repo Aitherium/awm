@@ -1,19 +1,32 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aither-world-model"
+name = "awm"
 version = "0.1.0"
-description = "A small, dependency-light world-model package: LeWM JEPA + MLP engines, environment adapters"
+description = "A portable, scoped agent memory — hierarchical tenant:user:project scopes where a write lands at exactly one scope, a read includes ancestors by distance, and siblings never leak."
+readme = "README.md"
 requires-python = ">=3.10"
-# torch/numpy are OPTIONAL at import time (engines degrade loudly without them);
-# they are listed here because every real deployment wants them.
+license = { text = "Apache-2.0" }
+# stdlib only (sqlite3, json). An agent's memory is the last thing that should
+# need a network or a service to be usable off-fleet.
 dependencies = []
 
 [project.optional-dependencies]
-torch = ["torch>=2.0", "numpy>=1.24"]
-dev = ["torch>=2.0", "numpy>=1.24", "pytest>=7.0"]
+dev = ["pytest>=7.0"]
 
-[tool.setuptools.packages.find]
-include = ["world_model*"]
+[project.scripts]
+awm = "awm.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Aitherium/awm"
+Repository = "https://github.com/Aitherium/awm.git"
+
+[tool.setuptools]
+packages = ["awm"]
+license-files = ["LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
