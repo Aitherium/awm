@@ -10,14 +10,13 @@
 
 <!-- aither-header:end -->
 
-A portable, scoped agent memory. SQLite, no service, no network.
+Agents forget everything between sessions, so they re-derive the same facts
+forever. The usual fix — one global memory — is worse: now every project sees
+every other project's notes, and one customer's context can end up in another
+customer's answer while the answer still looks like an answer.
 
-```
-platform:*:*               everyone
-{tenant}:*:*               one org
-{tenant}:{user}:*          one person
-{tenant}:{user}:{project}  one piece of work
-```
+`awm` is a memory with a **scope on every row**. SQLite file, no service, no
+network, no account.
 
 ```bash
 pip install awm
@@ -26,34 +25,130 @@ awm remember --scope acme:alice:orchestrator --key recipe --value "rank 16, lr 2
 awm recall   --scope acme:alice:orchestrator
 ```
 
+Python 3.10+. The only dependency is the standard library.
+
+## The scope
+
+```
+platform:*:*               everyone
+{tenant}:*:*               one org
+{tenant}:{user}:*          one person
+{tenant}:{user}:{project}  one piece of work
+```
+
+Three segments, always. `*` means "not narrowed at this level". `platform` is a
+**reserved sentinel** meaning everyone — a real organisation cannot be called
+`platform`, because resolving that ambiguity at read time would let a tenant
+name itself into the root of the hierarchy and see every other tenant's
+memories.
+
+Two shapes are refused outright rather than interpreted:
+
+| you write | what happens |
+|---|---|
+| `acme:alice` | `ScopeError` — a scope has exactly three segments |
+| `acme:*:secret` | `ScopeError` — a project under a wildcard user is ambiguous |
+| `ac:me:alice:x` | `ScopeError` — a segment may not contain the separator |
+
+That last one matters more than it looks: a `:` inside a segment silently
+re-partitions the scope, and a re-partitioned scope is a different scope with
+different visibility.
+
 ## Two rules, deliberately asymmetric
 
-**A write lands at exactly one scope.** Writing "somewhere in this subtree" is
-how a memory becomes visible to a scope its author never considered.
+**A write lands at exactly one scope.** There is no "write somewhere in this
+subtree" — that is how a memory becomes visible to a scope its author never
+considered. `remember()` upserts on `(scope, key)`, so writing twice updates
+rather than duplicating.
 
 **A read includes ancestors, weighted by distance.** A project query surfaces
-the user's preferences and the platform's conventions — that is the point of a
-hierarchy — but a platform fact must not outrank a project fact just because it
-was written first.
+the user's preferences and the org's conventions — that is the entire point of a
+hierarchy — but weight decays by `0.5` per level, so a platform fact never
+outranks a project fact merely by being older.
+
+```python
+from awm import MemoryStore, Scope
+
+store = MemoryStore("~/.awm/memories.db")
+store.remember(Scope.parse("acme:*:*"),                "style", "British spelling")
+store.remember(Scope.parse("acme:alice:orchestrator"), "lr",    "2e-5")
+
+for m in store.recall(Scope.parse("acme:alice:orchestrator")):
+    print(f"{m.weight:>4}  {m.scope:<26} {m.key} = {m.value}")
+
+#  1.0  acme:alice:orchestrator    lr = 2e-5
+#  0.25 acme:*:*                   style = British spelling
+```
+
+`recall()` takes `query=` (a substring over key and value), `kind=` and
+`limit=` (default 20). Results are sorted nearest-scope first, then most
+recently updated.
 
 ## One property that is security, not tidiness
 
 **Siblings never see each other.** `acme:alice:*` and `acme:bob:*` share an
-ancestor and nothing else. The scope check is segment-wise, never a string
-prefix, because `"acmecorp:...".startswith("acme")` is `True` — that is one
-customer's memory entering another's context, silently, with the answer still
-looking like an answer. SQL narrows by an exact computed set, never a `LIKE`.
+ancestor and nothing else.
 
-`platform` is a reserved sentinel tenant meaning "everyone", not an
-organisation. Treating it as a literal tenant name made the root of the
-hierarchy invisible from every scope — every recall still returned results, just
-never the platform's. The self-test carries that case.
+The scope check is **segment-wise, never a string prefix** — because
+`"acmecorp:secrets".startswith("acme")` is `True`. That is one customer's memory
+entering another's context, silently. So `recall()` computes the exact visible
+set and issues `WHERE scope IN (...)`:
+
+```sql
+-- what awm does                 -- what a prefix match would have done
+WHERE scope IN ('acme:alice:x',  WHERE scope LIKE 'acme:%'
+                'acme:alice:*',  --                    ^ also matches acmecorp:
+                'acme:*:*',
+                'platform:*:*')
+```
+
+There is a second check behind the first: every row that survives the `IN` is
+re-weighted, and a weight of zero drops it. The `IN` should make that
+unreachable — and if it ever is reachable, dropping the row is the safe answer
+and a leak is not.
+
+## Prediction is the tail, not the substrate
+
+`awm` answers *what happened, and who may see it*. A predictor answers *what
+happens next*. They compose, and the whole coupling is one structural `Protocol`
+that awm defines and never imports an implementation of:
+
+```bash
+pip install awm            # memory; a retrieval miss is simply a miss
+pip install awm awpredict  # misses come back marked PREDICTED, not RECALLED
+```
+
+Nothing in awm changes shape between those two worlds. That is on purpose:
+`awpredict` wants torch, awm is sold as *SQLite, no service, no network*, and a
+stranger who wants scoped memory should not have to acquire a deep-learning
+stack to get it.
+
+**And recall runs first, always.** Measured on real transitions:
+
+| | next-state class |
+|---|---|
+| online last-outcome lookup | **0.9720** |
+| the trained latent model | 0.9357 |
+
+The learned model *loses* to a self-updating lookup on 98.9% of rows and wins
+only on the ~1.1% carrying a genuinely novel action. A design that consults a
+model before consulting memory is choosing the worse answer for almost every
+query.
+
+## Everything it does
+
+| | |
+|---|---|
+| `awm remember --scope S --key K --value V` | write at exactly one scope |
+| `awm recall --scope S [--query Q] [--kind K] [--limit N]` | this scope and its ancestors |
+| `awm forget --scope S --key K` | remove one row |
+| `awm doctor` | what is installed, and whether the store answers |
+| `MemoryStore` · `Memory` · `Scope` · `visible_scopes` | the Python API |
+| `ANCESTOR_DECAY` · `PLATFORM` · `WILDCARD` · `SCHEMA_VERSION` | the constants that define the rules |
 
 ## Licence
 
 Apache-2.0.
-
----
 
 <!-- aither-ecosystem:start GENERATED from the ecosystem registry. Edits here are overwritten; change the registry instead. -->
 
