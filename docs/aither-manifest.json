@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "name": "awm",
+  "description": "A portable, scoped agent memory.",
+  "url": "https://aitherium.github.io/awm/",
+  "repository": "https://github.com/Aitherium/awm",
+  "kind": "tool",
+  "status": "public",
+  "adopt": "Give one agent a memory scoped to one project and watch it stop re-asking.",
+  "pairs_with": [
+    "awpredict",
+    "awdk",
+    "awgraph"
+  ],
+  "includes": [],
+  "metrics": {
+    "files": {
+      "value": 11,
+      "as_of": "2026-08-22T18:47:19-07:00"
+    },
+    "tests": {
+      "value": 0,
+      "as_of": "2026-08-22T18:47:19-07:00"
+    }
+  }
+}
