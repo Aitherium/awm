@@ -10,17 +10,18 @@
   "pairs_with": [
     "awpredict",
     "awdk",
-    "awgraph"
+    "awgraph",
+    "awembed"
   ],
   "includes": [],
   "metrics": {
     "files": {
       "value": 17,
-      "as_of": "2026-08-27T05:45:57-07:00"
+      "as_of": "2026-09-02T16:28:20-07:00"
     },
     "tests": {
       "value": 0,
-      "as_of": "2026-08-27T05:45:57-07:00"
+      "as_of": "2026-09-02T16:28:20-07:00"
     }
   }
 }
