@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "awm"
-version = "0.1.0"
+version = "0.1.1"
 description = "A portable, scoped agent memory — hierarchical tenant:user:project scopes where a write lands at exactly one scope, a read includes ancestors by distance, and siblings never leak."
 readme = "README.md"
 requires-python = ">=3.10"
