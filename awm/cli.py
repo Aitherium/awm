@@ -3,6 +3,8 @@
     awm remember --scope acme:alice:proj --key style --value "prefers tables"
     awm recall   --scope acme:alice:proj [--query tables]
     awm forget   --scope acme:alice:proj --key style
+    awm land     --scope acme:alice:proj DIR [DIR ...]   # memory files -> scope
+    awm sync     --out BUNDLES DIR                      # sealed bundle (awm[share])
     awm --self-test
 
 Scopes are `tenant:user:project`, `*` meaning "not narrowed here". A write lands
@@ -19,6 +21,14 @@ from pathlib import Path
 
 from .scope import Scope, ScopeError
 from .store import MemoryStore
+
+# A Windows console defaults to cp1252; one stored memory containing an emoji made
+# every `recall` that matched it crash with UnicodeEncodeError. Replace, never crash.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        continue
 
 DEFAULT_DB = Path.home() / ".aither" / "awm" / "memory.db"
 
@@ -54,6 +64,43 @@ def _cmd_forget(a) -> int:
         gone = st.forget(Scope.parse(a.scope), a.key)
     print("forgotten" if gone else "no such memory at that exact scope")
     return 0 if gone else 1
+
+
+def _cmd_land(a) -> int:
+    from .land import land_dir, load_state, save_state
+
+    scope = Scope.parse(a.scope)
+    state_path = Path(a.state) if a.state else DEFAULT_DB.parent / "land-state.json"
+    state = load_state(state_path)
+    rc = 0
+    with _store(a) as st:
+        for d in a.dirs:
+            path = Path(d).expanduser()
+            if not path.is_dir():
+                print(f"NOT RUN: {path} is not a directory", file=sys.stderr)
+                rc = 2
+                continue
+            c = land_dir(st, scope, path, state, dry_run=a.dry_run)
+            print(f"{path}: landed={c['landed']} unchanged={c['unchanged']} "
+                  f"skipped={c['skipped']} -> {scope}")
+    if not a.dry_run:
+        save_state(state_path, state)
+    return rc
+
+
+def _cmd_sync(a) -> int:
+    from .land import ShareUnavailableError, sync_dir
+
+    try:
+        r = sync_dir(Path(a.dir).expanduser(), Path(a.out).expanduser(), name=a.name)
+    except ShareUnavailableError as exc:
+        print(f"NOT RUN: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 1
+    print(f"sealed {r['files']} file(s) -> {a.out}/{r['name']} digest={r['digest']}")
+    return 0
 
 
 def self_test() -> int:
@@ -186,6 +233,19 @@ def main(argv=None) -> int:
     f.add_argument("--scope", required=True)
     f.add_argument("--key", required=True)
     f.set_defaults(fn=_cmd_forget)
+
+    ld = sub.add_parser("land", help="land a directory of memory files into a scope")
+    ld.add_argument("--scope", required=True)
+    ld.add_argument("--state", help="digest state file (default next to the db)")
+    ld.add_argument("--dry-run", action="store_true")
+    ld.add_argument("dirs", nargs="+")
+    ld.set_defaults(fn=_cmd_land)
+
+    sy = sub.add_parser("sync", help="seal + bundle a memory directory (awm[share])")
+    sy.add_argument("--out", required=True)
+    sy.add_argument("--name")
+    sy.add_argument("dir")
+    sy.set_defaults(fn=_cmd_sync)
 
     a = ap.parse_args(argv)
     if a.self_test:

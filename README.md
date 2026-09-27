@@ -135,6 +135,25 @@ only on the ~1.1% carrying a genuinely novel action. A design that consults a
 model before consulting memory is choosing the worse answer for almost every
 query.
 
+## Landing an agent's memory files
+
+Agent harnesses keep file-based memory: one Markdown file per fact, with a small
+frontmatter block (`name`, `description`, `type`). `awm land` writes each file into a
+scope as one memory, keyed by its file stem. It is idempotent -- a file is re-written
+only when its content changed -- so it is safe to run on a timer.
+
+```bash
+awm land --scope acme:alice:proj ~/.claude/projects/proj/memory
+awm recall --scope acme:alice:proj --query "pressure"
+```
+
+`awm sync` seals the directory and bundles it so it can travel to another machine or
+store and be verified on arrival (needs the optional extra: `pip install 'awm[share]'`):
+
+```bash
+awm sync --out ./bundles ~/.claude/projects/proj/memory
+```
+
 ## Everything it does
 
 | | |
