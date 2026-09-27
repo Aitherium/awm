@@ -4,6 +4,8 @@
     awm recall   --scope acme:alice:proj [--query tables]
     awm forget   --scope acme:alice:proj --key style
     awm land     --scope acme:alice:proj DIR [DIR ...]   # memory files -> scope
+    awm land     --install-wake [--every 1h] --scope S DIR  # ...on an awrise schedule
+    awm land     --uninstall-wake
     awm sync     --out BUNDLES DIR                      # sealed bundle (awm[share])
     awm --self-test
 
@@ -79,9 +81,32 @@ def _cmd_forget(a) -> int:
     return 0 if gone else 1
 
 
+def _cmd_land_wake(a) -> int:
+    from . import wake
+
+    try:
+        if a.uninstall_wake:
+            return wake.uninstall(name=a.wake_name)
+        if not a.scope or not a.dirs:
+            print("REFUSED: --install-wake needs --scope and at least one DIR",
+                  file=sys.stderr)
+            return 2
+        Scope.parse(a.scope)
+        return wake.install(a.scope, a.dirs, every=a.every, name=a.wake_name,
+                            db=a.db, state=a.state, repo=a.repo)
+    except wake.AwriseMissingError as exc:
+        print(f"NOT RUN: {exc}", file=sys.stderr)
+        return 2
+
+
 def _cmd_land(a) -> int:
     from .land import land_dir, load_state, save_state
 
+    if a.install_wake or a.uninstall_wake:
+        return _cmd_land_wake(a)
+    if not a.scope or not a.dirs:
+        print("REFUSED: land needs --scope and at least one DIR", file=sys.stderr)
+        return 2
     scope = Scope.parse(a.scope)
     state_path = Path(a.state) if a.state else DEFAULT_DB.parent / "land-state.json"
     state = load_state(state_path)
@@ -291,11 +316,18 @@ def main(argv=None) -> int:
     f.set_defaults(fn=_cmd_forget)
 
     ld = sub.add_parser("land", help="land a directory of memory files into a scope")
-    ld.add_argument("--scope", required=True)
+    ld.add_argument("--scope")
     ld.add_argument("--state", help="digest state file (default next to the db)")
     ld.add_argument("--dry-run", action="store_true")
     ld.add_argument("--repo", help="stamp each memory with this repo's HEAD (git provenance)")
-    ld.add_argument("dirs", nargs="+")
+    wk = ld.add_mutually_exclusive_group()
+    wk.add_argument("--install-wake", action="store_true",
+                    help="register an awrise job that runs this land on --every")
+    wk.add_argument("--uninstall-wake", action="store_true",
+                    help="remove the awrise job --install-wake registered")
+    ld.add_argument("--every", default="1h", help="wake interval for --install-wake (1h)")
+    ld.add_argument("--wake-name", default="awm-land", help="awrise job name (awm-land)")
+    ld.add_argument("dirs", nargs="*")
     ld.set_defaults(fn=_cmd_land)
 
     sy = sub.add_parser("sync", help="seal + bundle a memory directory (awm[share])")

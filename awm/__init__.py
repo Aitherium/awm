@@ -41,7 +41,7 @@ from .scope import (
 )
 from .store import SCHEMA_VERSION, Memory, MemoryStore
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "ANCESTOR_DECAY",

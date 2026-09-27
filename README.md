@@ -147,6 +147,27 @@ awm land --scope acme:alice:proj ~/.claude/projects/proj/memory
 awm recall --scope acme:alice:proj --query "pressure"
 ```
 
+### On a schedule
+
+awm has no clock of its own; [awrise](https://github.com/Aitherium/awrise) is the
+wake brick, and `--install-wake` registers one awrise job that runs the same `land`
+on an interval:
+
+```bash
+pip install awrise
+awm land --install-wake --every 1h --scope acme:alice:proj ~/.claude/projects/proj/memory
+awrise install-clock      # once per machine: the host scheduler that ticks awrise
+awrise status             # every wake of the job, and why it did or did not fire
+awm land --uninstall-wake # remove the job
+```
+
+The job is named `awm-land` (`--wake-name` to choose another). Installing again
+**updates** that job -- a new interval, scope or directory list -- rather than adding
+a second one. Directories are stored as absolute paths, and `--db`, `--state` and
+`--repo` are carried into the scheduled command. `awm` itself must be on the PATH the
+scheduler sees. If awrise is not installed the command prints how to install it and
+exits 2; nothing is registered.
+
 `awm sync` seals the directory and bundles it so it can travel to another machine or
 store and be verified on arrival (needs the optional extra: `pip install 'awm[share]'`):
 
