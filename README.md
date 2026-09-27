@@ -154,6 +154,22 @@ store and be verified on arrival (needs the optional extra: `pip install 'awm[sh
 awm sync --out ./bundles ~/.claude/projects/proj/memory
 ```
 
+## Working with the rest of the family
+
+Every coupling is optional: awm imports none of these at load time, and each one says
+"not available" plainly when its package or its data is missing.
+
+| with | command | what it adds |
+|---|---|---|
+| git | `awm land --repo DIR ...` | stamps each memory with the commit it was written against |
+| awgraph | `awm recall --graph ROOT ...` | flags memories that name code the index no longer has (`STALE`) |
+| awseal + awshare | `awm sync --out B DIR` | a signed bundle another machine verifies on arrival |
+| awsettings | `awm sync ... --record PROJECT` | records the bundle digest and signing key in the config `awsettings --domain memory` syncs |
+| awrecover | `awm backup --store S LABEL` / `awm restore --store S LABEL` | a snapshot of the memory db that is proven to restore before it counts |
+| awpredict | `awm.predict` | a retrieval miss can come back PREDICTED instead of empty |
+
+`pip install 'awm[share]'` pulls awshare, awseal and awrecover.
+
 ## Everything it does
 
 | | |

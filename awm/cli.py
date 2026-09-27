@@ -54,8 +54,21 @@ def _cmd_recall(a) -> int:
     if not rows:
         print("no memories visible from this scope")
         return 0
+    stale_note = ""
+    if a.graph:
+        from .integrations import stale_symbols
+        judged = [(r, stale_symbols(r.value, Path(a.graph).expanduser())) for r in rows]
+        if any(s is None for _r, s in judged):
+            stale_note = f"(awgraph: no index for {a.graph} or awgraph not installed)"
     for r in rows:
-        print(f"[{r.weight:.2f}] {r.scope:28} {r.key:20} {r.value[:60]}")
+        line = f"[{r.weight:.2f}] {r.scope:28} {r.key:20} {r.value[:60]}"
+        if a.graph and not stale_note:
+            gone = next(s for rr, s in judged if rr is r)
+            if gone:
+                line += f"  STALE: {', '.join(gone[:4])} not in the code graph"
+        print(line)
+    if stale_note:
+        print(stale_note, file=sys.stderr)
     return 0
 
 
@@ -80,7 +93,14 @@ def _cmd_land(a) -> int:
                 print(f"NOT RUN: {path} is not a directory", file=sys.stderr)
                 rc = 2
                 continue
-            c = land_dir(st, scope, path, state, dry_run=a.dry_run)
+            extra = {}
+            if a.repo:
+                from .integrations import git_provenance
+                extra = {"git": git_provenance(Path(a.repo).expanduser())}
+                if not extra["git"]:
+                    print(f"NOT RUN: {a.repo} is not a git repository", file=sys.stderr)
+                    return 2
+            c = land_dir(st, scope, path, state, dry_run=a.dry_run, extra_meta=extra)
             print(f"{path}: landed={c['landed']} unchanged={c['unchanged']} "
                   f"skipped={c['skipped']} -> {scope}")
     if not a.dry_run:
@@ -100,6 +120,41 @@ def _cmd_sync(a) -> int:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
     print(f"sealed {r['files']} file(s) -> {a.out}/{r['name']} digest={r['digest']}")
+    if a.record:
+        from .integrations import record_bundle
+        pub = ""
+        try:
+            import awseal  # type: ignore[import-not-found]
+            pub = awseal.public_key_hex()
+        except Exception:  # noqa: BLE001 -- the digest alone still pins the bundle
+            pub = ""
+        cfg = record_bundle(a.record, str(r["digest"]), pub)
+        print(f"recorded {a.record} in {cfg} (synced by `awsettings --domain memory push`)")
+    return 0
+
+
+def _cmd_backup(a) -> int:
+    from .integrations import RecoverUnavailableError, backup_db
+
+    try:
+        r = backup_db(Path(a.db) if a.db else DEFAULT_DB, Path(a.store).expanduser(), a.label)
+    except RecoverUnavailableError as exc:
+        print(f"NOT RUN: {exc}", file=sys.stderr)
+        return 2
+    print(f"snapshot {r['label']} verified (restored and compared) -> {a.store}")
+    return 0
+
+
+def _cmd_restore(a) -> int:
+    from .integrations import RecoverUnavailableError, restore_db
+
+    try:
+        r = restore_db(Path(a.store).expanduser(), a.label, Path(a.db) if a.db else DEFAULT_DB)
+    except RecoverUnavailableError as exc:
+        print(f"NOT RUN: {exc}", file=sys.stderr)
+        return 2
+    print(f"restored {r['label']} -> {r['db']}"
+          + (f" (previous kept at {r['previous']})" if r["previous"] else ""))
     return 0
 
 
@@ -227,6 +282,7 @@ def main(argv=None) -> int:
     c.add_argument("--kind")
     c.add_argument("--limit", type=int, default=20)
     c.add_argument("--json", action="store_true")
+    c.add_argument("--graph", help="repo root with an awgraph index: flag stale code names")
     c.set_defaults(fn=_cmd_recall)
 
     f = sub.add_parser("forget")
@@ -238,14 +294,27 @@ def main(argv=None) -> int:
     ld.add_argument("--scope", required=True)
     ld.add_argument("--state", help="digest state file (default next to the db)")
     ld.add_argument("--dry-run", action="store_true")
+    ld.add_argument("--repo", help="stamp each memory with this repo's HEAD (git provenance)")
     ld.add_argument("dirs", nargs="+")
     ld.set_defaults(fn=_cmd_land)
 
     sy = sub.add_parser("sync", help="seal + bundle a memory directory (awm[share])")
     sy.add_argument("--out", required=True)
     sy.add_argument("--name")
+    sy.add_argument("--record", metavar="PROJECT",
+                    help="record the bundle digest + key in the awsettings memory config")
     sy.add_argument("dir")
     sy.set_defaults(fn=_cmd_sync)
+
+    bk = sub.add_parser("backup", help="snapshot the memory db and prove it restores")
+    bk.add_argument("--store", required=True)
+    bk.add_argument("label")
+    bk.set_defaults(fn=_cmd_backup)
+
+    rs = sub.add_parser("restore", help="put a verified snapshot back as the memory db")
+    rs.add_argument("--store", required=True)
+    rs.add_argument("label")
+    rs.set_defaults(fn=_cmd_restore)
 
     a = ap.parse_args(argv)
     if a.self_test:

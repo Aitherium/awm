@@ -74,7 +74,8 @@ def parse_memory_file(path: Path) -> Optional[MemoryFile]:
 
 
 def land_dir(store: MemoryStore, scope: Scope, mem_dir: Path,
-             state: Dict[str, str], *, dry_run: bool = False) -> Dict[str, int]:
+             state: Dict[str, str], *, dry_run: bool = False,
+             extra_meta: Optional[Dict[str, object]] = None) -> Dict[str, int]:
     """Write changed memory files into ``scope``. ``state`` maps slug -> digest.
 
     Returns counts: landed, unchanged, skipped (index/empty files).
@@ -93,7 +94,7 @@ def land_dir(store: MemoryStore, scope: Scope, mem_dir: Path,
             value = f"{mf.description}\n\n{mf.body}".strip()[:VALUE_CAP]
             store.remember(scope, mf.slug, value, kind=mf.kind,
                            meta={"source": "memory-file", "name": mf.name,
-                                 "digest": mf.digest})
+                                 "digest": mf.digest, **(extra_meta or {})})
             state[key] = mf.digest
         counts["landed"] += 1
     return counts
