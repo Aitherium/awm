@@ -29,7 +29,9 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -v
 
-      - name: Confirm tests actually ran (not skipped for lack of torch)
+      - name: Confirm tests actually ran
+        # awm has no torch dependency (this step was copied from awpredict). A run
+        # that collected nothing is a failure, not a pass.
         run: |
-          python -m pytest tests/ -v --collect-only -q | tail -1
-          python -c "import torch; print('torch', torch.__version__, 'present')"
+          n=$(python -m pytest tests/ --collect-only -q | grep -c "::")
+          echo "collected $n tests"; test "$n" -gt 0
