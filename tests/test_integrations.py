@@ -89,4 +89,4 @@ def test_backup_is_verified_and_restore_brings_the_memory_back(tmp_path):
     assert main(["--db", str(db), "restore", "--store", str(snaps), "pre"]) == 0
     with MemoryStore(db) as st:
         assert st.recall(Scope.parse("a:b:c"))[0].value == "before"
-    assert (tmp_path / "m.db.before-restore").exists()
+    assert len(list(tmp_path.glob("m.db.before-restore-*"))) == 1

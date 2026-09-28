@@ -191,6 +191,145 @@ Every coupling is optional: awm imports none of these at load time, and each one
 
 `pip install 'awm[share]'` pulls awshare, awseal and awrecover.
 
+## For coding agents: MCP server and a SessionStart hook
+
+`awm mcp` serves the store over MCP stdio -- stdlib only, no `mcp` package needed:
+
+```json
+{"mcpServers": {"awm": {"command": "awm", "args": ["mcp"], "env": {"AWM_USER": "alice"}}}}
+```
+
+Tools: `awm_scope`, `awm_recall`, `awm_list`, `awm_remember`, `awm_forget`,
+`awm_history`, `awm_resolve_entity`, `awm_confirm_alias`, `awm_reject_alias`,
+`awm_world_state`, `awm_predict`, `awm_observe` (`awm_recall` takes an optional `as_of`). Every `scope`
+argument is optional: omitted, it is derived from the working directory -- tenant = the
+`origin` remote's owner, user = `$AWM_USER` / `$AITHER_USER` / the login name, project = the
+repository directory (`$AWM_SCOPE` overrides all three). A wildcard user under a named
+project is refused exactly as on the command line. `awm_remember` refuses to replace a
+different value unless `overwrite` is true; `awm_forget` is refused unless the server was
+started with `--allow-forget`.
+
+`awm recall --claude-hook` prints the ten nearest, newest facts for this repository as a
+Claude Code `SessionStart` hook payload (`additionalContext`, capped at 1500 characters).
+It exits 0 and prints nothing when there is no store, no derivable scope, or no memory,
+and it never creates the database.
+
+## When a fact changes, and who "VS" is (v0.4, schema v2)
+
+Session 1: "I prefer dark mode". Session 5: "I switched to light mode". Session 8:
+"which mode do I use?" -- a memory that appends answers with both; one that upserts
+destroys the first. awm does neither:
+
+```python
+st.reconcile_and_remember(scope, "prefers dark mode", subject="user.ui_theme")
+st.reconcile_and_remember(scope, "switched to light mode", subject="user.ui_theme")
+st.recall(scope)                  # light mode only
+st.history(scope, "user.ui_theme")  # dark (valid_to set, superseded), then light
+st.recall(scope, as_of=ts)        # what was true at ts
+```
+
+A changed value moves the old one to `memory_history` with the interval it was true
+for; `forget` records the deletion there too, and only `purge_history(scope, key)`, at
+exactly one scope, erases it. The decision to add, update or ignore is a
+`Reconciler`'s: `SlotReconciler` is deterministic, `LLMReconciler(complete)` takes a
+model callable the host injects (awm itself never calls a model), and every decision is
+validated before it is applied -- a malformed model reply raises, it is never guessed.
+
+`resolve_entity(scope, mention)` links "vansh from india" to "vansh" (a known name plus
+a qualifier is CONFIRMED, the qualifier kept as evidence), but "VS" only becomes a
+POSSIBLE alias of every plausible entity -- nothing is merged until
+`confirm_alias`/`reject_alias`. The qualifier must follow the name directly: "Vansh
+Kumar, the designer" and "Vansh A. Sharma" are only POSSIBLE matches for "vansh", and
+the order does not matter -- "vansh from india" first creates "vansh". "me", "I" and
+"myself" are the scope's own user (an entity already named after the user is reused).
+`reconcile_and_remember` reads candidates at the write scope only: a project value for
+a subject the user scope also holds is an override, and `recall` ranks it first.
+History, `as_of` and entities obey the same rule as `recall`: ancestors visible,
+siblings never. (Up to 0.5.0 a v1 file migrated on first open; since 0.6.0 that is
+opt-in -- see "Upgrading a memory file" below.)
+
+## What an action does, and when it surprised us (v0.5, schema v3)
+
+The facts visible from a scope ARE a world state. `encode_state(scope, prefix=...)`
+returns them as a `WorldState` with a stable digest (sorted key/value pairs, nearest
+scope winning a key); `as_of=` gives the state at any past instant. Record what an
+action did and awm keeps a transition table beside the facts:
+
+```python
+before = st.encode_state(scope, prefix="grid")
+# ... act: the agent (or the user) changes some facts ...
+after = st.encode_state(scope, prefix="grid")
+t = st.observe_transition(scope, before, "move right", after)   # t.surprise in [0,1]
+p = st.predict_outcome(scope, st.encode_state(scope, prefix="grid"), "move right")
+p.source      # RECALLED | PREDICTED | GENERALIZED | NONE -- never merged
+st.unexplained_changes(scope, since)   # slots that changed with no action covering them
+st.surprise_log(scope, since)          # scored transitions + unexplained changes
+```
+
+Prediction is tabular first: the most recent outcome of the exact (state, action),
+confidence = the share of observations that agree (RECALLED). Only on a miss is an
+injected `predictor` asked (PREDICTED); failing that, the action's outcome over every
+state (GENERALIZED, labelled state-blind); failing that, NONE -- "no model", never
+"nothing changes". Measured on real transitions, a self-updating last-outcome table
+predicts the next state better (0.972) than a trained MLP (0.936); the learned model is
+the tail.
+
+Surprise is violation of expectation: the fraction of touched slots whose predicted
+next value differs from the observed one, NULL when nothing was predicted (novelty is
+not surprise). A slot that changes with no recorded transition taking it to that value
+is an UNEXPLAINED change -- "I switched to light mode" recorded as an action explains
+dark -> light; the same write with nothing announcing it is a teleport. Transitions
+obey the scope rules: written at exactly one scope, read from it and its ancestors,
+never a sibling. A newer file is refused.
+
+`surprise_stats(scope, since)` (0.6) summarises it: `count`, `mean`, `p50`/`p90` of the
+scored transitions, `novel` (nothing predicted), `unexplained` changes, and a
+calibration table -- for each stated-confidence bucket, the mean confidence against the
+share of predictions that were exactly right, plus `ece`, the n-weighted gap. A bucket
+with no transitions reports None, not 0. It reads the predictions as they were made and
+scored at the time; nothing is re-predicted.
+
+## Entities: typos, initials, and undoing a merge (v0.6)
+
+- A near-miss spelling is a POSSIBLE link, never a confirmed one: "Vanhs" proposes
+  "vansh" (edit distance 1, with a neighbour swap counted as one edit, when both names
+  have at least 5 characters; distance 2 at 8+). Names that differ in their digits
+  ("server01"/"server02") are never typos. The canonical name is matched as well as
+  the confirmed aliases.
+- A mention WRITTEN as initials ("VS", "V.S.") ranks the entities whose multi-word name
+  it is exactly the initials of first ("vansh sharma" before "vosk"). Lowercase "vs"
+  keeps the older order: it may be an abbreviation.
+- `merge_entities(scope, keep, drop)` declares two entities one: drop's aliases move to
+  keep at exactly `scope`, and the prior alias sets are recorded. `split_entity(scope,
+  merged_id)` restores them exactly (an alias keep gained afterwards, under a name
+  neither had, stays with keep and is listed). Refused: an id not visible from the
+  scope (a sibling's), a `drop` living at another scope or named at another scope, a
+  name confirmed for one and rejected for the other, and splitting out of order. CLI:
+  `awm entity merge KEEP DROP --scope S`, `awm entity split MERGED_ID --scope S`; MCP:
+  `awm_merge_entities`, `awm_split_entity`.
+
+## Upgrading a memory file (v0.6)
+
+awm 0.4.0 and 0.5.0 migrated an older file the moment they opened it. The version bump
+locked every installed older reader out: awm 0.3.x refuses any file that is not schema
+v1, so one `awm recall` from a newer install broke every other tool sharing
+`~/.aither/awm/memory.db`. **0.6.0 never migrates on open.**
+
+- An older file opens in COMPAT mode and is not written on open. `remember`, `recall`,
+  `forget` and `count` behave exactly as the file's version does (v1: an in-place
+  upsert, no history), so 0.3.x keeps reading it. Every newer feature (history,
+  `as_of`, reconcile, entities, the world model, surprise stats, merge) raises
+  `NeedsMigration`, which names the command. A v2 file keeps its v2 features.
+- `awm migrate [--db P] [--no-backup] [--dry-run]` (or `MemoryStore.migrate()`) takes
+  the write lock, writes a byte backup next to the file and checks its sha256 against
+  the original, migrates in one transaction, and compares every table's row count and a
+  digest of every memory before and after; any difference rolls back. It prints both
+  counts. After it, awm older than 0.4.0 cannot open the file; the backup can.
+- `awm doctor [--db P]` shows the file's schema against the code's and whether compat
+  mode is active. It opens the file read-only and never creates one.
+- `AWM_AUTO_MIGRATE=1` restores migrate-on-open (still with the backup).
+- New files are created at the current schema (v3).
+
 ## Everything it does
 
 | | |
@@ -198,8 +337,17 @@ Every coupling is optional: awm imports none of these at load time, and each one
 | `awm remember --scope S --key K --value V` | write at exactly one scope |
 | `awm recall --scope S [--query Q] [--kind K] [--limit N]` | this scope and its ancestors |
 | `awm forget --scope S --key K` | remove one row |
-| `awm doctor` | what is installed, and whether the store answers |
-| `MemoryStore` · `Memory` · `Scope` · `visible_scopes` | the Python API |
+| `awm recall --as-of TS` | what was true then (unix seconds or ISO date) |
+| `awm history KEY` | every value KEY has held, oldest first |
+| `awm entity resolve\|confirm\|reject\|list` | who a mention names; nothing merged on a guess |
+| `awm world state\|predict ACTION\|surprises\|stats` | the world state, what an action does, what surprised us, how calibrated it was |
+| `awm entity merge KEEP DROP` · `awm entity split MERGED_ID` | declare two entities one; undo it exactly |
+| `awm migrate [--dry-run] [--no-backup]` | older file -> current schema, verified backup first |
+| `awm doctor [--db P]` | what is installed, and the file's schema vs the code's |
+| `MemoryStore` · `Memory` · `HistoryEntry` · `Scope` · `visible_scopes` | the Python API |
+| `Reconciler` · `SlotReconciler` · `LLMReconciler` · `Decision` · `Resolution` · `normalize` | reconcile and entities |
+| `WorldState` · `WorldPrediction` · `Transition` · `SurpriseEvent` · `SurpriseStats` · `encode_state` · `state_digest` | the dynamics layer (`awm.world`) |
+| `NeedsMigration` · `MigrationError` · `probe_schema` | compat mode and the opt-in migration |
 | `ANCESTOR_DECAY` · `PLATFORM` · `WILDCARD` · `SCHEMA_VERSION` | the constants that define the rules |
 
 ## Licence

@@ -39,18 +39,79 @@ from .scope import (
     ScopeError,
     visible_scopes,
 )
-from .store import SCHEMA_VERSION, Memory, MemoryStore
+from .entities import Entity, Resolution, normalize
+from .pending import KIND_AMBIGUOUS, AboutResult, EntityRecall, PendingUpdate
+from .reconcile import (
+    Decision,
+    LLMReconciler,
+    ReconcileError,
+    Reconciler,
+    SlotReconciler,
+)
+from .store import (
+    SCHEMA_VERSION,
+    HistoryEntry,
+    Memory,
+    MemoryStore,
+    MigrationError,
+    NeedsMigration,
+    probe_schema,
+)
+from .world import (
+    GENERALIZED,
+    NONE,
+    PREDICTED,
+    RECALLED,
+    SlotChange,
+    SurpriseEvent,
+    SurpriseStats,
+    Transition,
+    WorldError,
+    WorldState,
+    encode_state,
+    state_digest,
+)
+from .world import Prediction as WorldPrediction
 
-__version__ = "0.3.1"
+__version__ = "0.6.0"
 
 __all__ = [
     "ANCESTOR_DECAY",
+    "AboutResult",
+    "EntityRecall",
+    "KIND_AMBIGUOUS",
+    "PendingUpdate",
+    "GENERALIZED",
+    "NONE",
+    "PREDICTED",
+    "RECALLED",
+    "MigrationError",
+    "NeedsMigration",
+    "SlotChange",
+    "SurpriseEvent",
+    "SurpriseStats",
+    "Transition",
+    "WorldError",
+    "WorldPrediction",
+    "WorldState",
+    "encode_state",
+    "state_digest",
     "PLATFORM",
     "SCHEMA_VERSION",
+    "Decision",
+    "Entity",
+    "HistoryEntry",
+    "LLMReconciler",
     "Memory",
     "MemoryStore",
+    "ReconcileError",
+    "Reconciler",
+    "Resolution",
     "Scope",
     "ScopeError",
+    "SlotReconciler",
     "WILDCARD",
+    "normalize",
+    "probe_schema",
     "visible_scopes",
 ]

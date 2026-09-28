@@ -154,8 +154,70 @@ def backup_db(db: Path, store: Path, label: str) -> Dict[str, object]:
     return {"label": label, "digest": getattr(snap, "digest", ""), "verified": proof}
 
 
+_SIDECARS = ("-journal", "-wal", "-shm")
+
+
+def _keep_name(db: Path) -> Path:
+    """A fresh ``<db>.before-restore-<UTC stamp>[-n]`` path: never an existing file.
+
+    A fixed name was overwritten by the next restore, destroying the only copy of
+    rows written before the first one.
+    """
+    import datetime
+
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    base = db.with_name(f"{db.name}.before-restore-{stamp}")
+    cand, n = base, 1
+    while cand.exists():
+        cand = base.with_name(f"{base.name}-{n}")
+        n += 1
+    return cand
+
+
+def _keep_previous(db: Path) -> str:
+    """Copy the current db aside CONSISTENTLY and return where; '' when there is none.
+
+    Opening the db first lets SQLite roll back a hot rollback ``-journal`` (or fold a
+    WAL) left by a crashed writer, and the online backup API then copies committed
+    pages only. A plain file copy of ``memory.db`` without its journal is a torn,
+    malformed file. If SQLite cannot open it at all, the main file AND its sidecars
+    are copied byte-for-byte so nothing is lost.
+    """
+    import shutil
+    import sqlite3
+
+    if not db.exists():
+        return ""
+    kept = _keep_name(db)
+    try:
+        src = sqlite3.connect(str(db))
+        try:
+            src.execute("SELECT count(*) FROM sqlite_master").fetchone()  # rolls a hot journal back
+            dst = sqlite3.connect(str(kept))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+    except sqlite3.DatabaseError:
+        kept.unlink(missing_ok=True)
+        shutil.copy2(db, kept)
+        for suf in _SIDECARS:
+            side = db.with_name(db.name + suf)
+            if side.exists():
+                shutil.copy2(side, kept.with_name(kept.name + suf))
+    return str(kept)
+
+
 def restore_db(store: Path, label: str, db: Path) -> Dict[str, object]:
-    """Put the snapshot ``label`` back as ``db``. The previous db is kept beside it."""
+    """Put the snapshot ``label`` back as ``db``. The previous db is kept beside it.
+
+    Every restore keeps the previous db under its own timestamped name, and every
+    sidecar (rollback ``-journal``, ``-wal``, ``-shm``) is removed before the swap: a
+    stale hot journal would otherwise be rolled back OVER the restored pages on the
+    next open.
+    """
     import shutil
     import tempfile
 
@@ -167,13 +229,10 @@ def restore_db(store: Path, label: str, db: Path) -> Dict[str, object]:
         if not restored.exists():
             raise RecoverUnavailableError(f"snapshot {label!r} holds no memory.db")
         db.parent.mkdir(parents=True, exist_ok=True)
-        kept = ""
-        if db.exists():
-            kept = str(db.with_suffix(".db.before-restore"))
-            shutil.copy2(db, kept)
-        for side in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
-            side.unlink(missing_ok=True)  # a stale WAL would replay over the restore
-        tmp = db.with_suffix(".db.restoring")
+        kept = _keep_previous(db)
+        tmp = db.with_name(db.name + ".restoring")
         shutil.copy2(restored, tmp)
+        for suf in _SIDECARS:
+            db.with_name(db.name + suf).unlink(missing_ok=True)
         tmp.replace(db)
     return {"label": label, "db": str(db), "previous": kept}
