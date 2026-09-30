@@ -33,7 +33,7 @@ PAIRS_WITH = ['adk', 'awembed', 'awgraph', 'awpredict']
 #: platform-wide vars it also touches would be noise, and a doctor that floods
 #: gets ignored.
 ENV_REQUIRED = []
-ENV_OPTIONAL = []
+ENV_OPTIONAL = ['AWM_SCOPE', 'AWM_USER']
 
 
 def _installed(mod: str) -> "str | None":
