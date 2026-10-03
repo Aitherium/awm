@@ -90,3 +90,18 @@ def test_backup_is_verified_and_restore_brings_the_memory_back(tmp_path):
     with MemoryStore(db) as st:
         assert st.recall(Scope.parse("a:b:c"))[0].value == "before"
     assert len(list(tmp_path.glob("m.db.before-restore-*"))) == 1
+
+
+def test_backing_up_an_unchanged_db_again_stores_nothing_new(tmp_path):
+    awrecover = pytest.importorskip("awrecover")
+    if tuple(int(x) for x in awrecover.__version__.split(".")[:2]) < (0, 2):
+        pytest.skip("incremental snapshots need awrecover >= 0.2")
+    from awrecover.store import load_index
+    db, snaps = tmp_path / "m.db", tmp_path / "snaps"
+    with MemoryStore(db) as st:
+        st.remember(Scope.parse("a:b:c"), "k", "v")
+    assert main(["--db", str(db), "backup", "--store", str(snaps), "b1"]) == 0
+    assert main(["--db", str(db), "backup", "--store", str(snaps), "b2"]) == 0
+    idx = load_index(snaps)
+    assert idx["b1"].meta["new_bytes"] > 0
+    assert idx["b2"].meta["new_bytes"] == 0

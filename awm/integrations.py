@@ -149,7 +149,12 @@ def backup_db(db: Path, store: Path, label: str) -> Dict[str, object]:
         finally:
             dst.close()
             src.close()
-        snap = awrecover.snapshot(stage, store, label, meta={"source": "awm backup"})
+        try:
+            # awrecover >= 0.2: incremental -- an unchanged db costs nothing to keep again.
+            snap = awrecover.snapshot(stage, store, label, meta={"source": "awm backup"},
+                                      incremental=True)
+        except TypeError:  # an older awrecover: a full bundle, as before
+            snap = awrecover.snapshot(stage, store, label, meta={"source": "awm backup"})
     proof = awrecover.verify(store, label)
     return {"label": label, "digest": getattr(snap, "digest", ""), "verified": proof}
 

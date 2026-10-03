@@ -140,4 +140,4 @@ def test_cli_version_matches_pyproject() -> None:
     import awm
     text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8")
     assert f'version = "{awm.__version__}"' in text
-    assert awm.__version__ == "0.6.0"
+    assert awm.__version__ == "0.6.1"
