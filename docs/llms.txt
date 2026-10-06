@@ -1,0 +1,37 @@
+# awm
+
+> A portable, scoped agent memory.
+
+An agent that forgets everything between sessions re-derives the same facts forever; one that remembers everything globally leaks context across projects.
+
+## Install
+
+```
+pip install awm
+```
+
+## In Claude Code
+
+- mcp: `awm mcp`
+- hook: `awm recall --claude-hook` (on SessionStart)
+
+## Use it in 30 seconds
+
+Give one agent a memory scoped to one project and watch it stop re-asking.
+
+## Composes with
+
+- [awpredict](https://aitherium.github.io/awpredict/) — Predict what your environment does next, and how surprised you were.
+- [awdk](https://aitherium.github.io/awdk/) — Build AI agent fleets — 3 lines, any backend, local or cloud.
+- [awgraph](https://aitherium.github.io/awgraph/) — A semantic code graph for agents — AST + tree-sitter, call graphs.
+- [awembed](https://aitherium.github.io/awembed/) — Train an embedding model that knows your corpus, and prove it beats the big one.
+
+## Where it lives
+
+- Repo: https://github.com/Aitherium/awm
+- Docs: https://aitherium.github.io/awm/
+- Manifest (keys + the one-line adoption story): https://aitherium.github.io/awm/aither-manifest.json
+
+This repository is mirrored from the AitherOS monorepo by `.github/workflows/sync-awm.yml`; hand edits made here are overwritten on the next sync — change the source instead.
+
+Everything Aitherium, in one file for agents: https://aitherium.com/llms.txt
