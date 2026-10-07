@@ -139,5 +139,7 @@ def test_cli_entity_round_trip(tmp_path: Path, capsys) -> None:
 def test_cli_version_matches_pyproject() -> None:
     import awm
     text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8")
+    # Agreement with pyproject is the contract; a literal version here failed
+    # every release bump until someone edited the test too (awstorage hit
+    # exactly that on 0.5.2, 2026-10-07).
     assert f'version = "{awm.__version__}"' in text
-    assert awm.__version__ == "0.6.1"
