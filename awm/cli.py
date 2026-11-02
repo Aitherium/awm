@@ -140,12 +140,36 @@ def parse_as_of(text: str) -> float:
     return check_ts(ts, text)
 
 
+def _tokengate_filter(rows, query):
+    """Context selection over recall results — PASS-THROUGH unless provably safe.
+
+    ``awm`` is a brick that must run alone, so ``lib`` is imported lazily and
+    only when the AitherOS retrieval selector is installed. That selector is
+    promotion-gated (the active TokenGate checkpoint must have passed the
+    natural-text eval), so outside AitherOS, before a gate passes, or with no
+    query words, the same rows come back in the same order.
+    """
+    if not query or len(rows) < 2:
+        return rows
+    try:
+        from lib.retrieval import tokengate_selector as selector
+    except ImportError:
+        return rows
+    try:
+        values = [getattr(r, "value", "") or "" for r in rows]
+        picked = selector.select(values, query)
+    except Exception:  # noqa: BLE001 - an optimisation layer never breaks recall
+        return rows
+    return [rows[i] for i in picked.index] if picked else rows
+
+
 def _cmd_recall(a) -> int:
     from .defaults import resolve
     as_of = parse_as_of(a.as_of) if a.as_of else None
     with _store(a, read=True) as st:
         rows = st.recall(resolve(a.scope, user=a.user), query=a.query, limit=a.limit,
                          kind=a.kind, as_of=as_of)
+    rows = _tokengate_filter(rows, a.query)
     if a.json:
         print(json.dumps([r.to_dict() for r in rows], indent=2))
         return 0
