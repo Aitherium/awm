@@ -3,6 +3,25 @@
 Release dates for 0.4.0 and 0.5.0 were not recorded in this tree, so they are left
 out rather than guessed.
 
+## [0.6.1] - 2026-11-06
+
+### Added
+
+- **tokengate**: autonomous evolution loop, a paging gate and the host applier (#14808) (ba93cb0d62)
+- **awdiscord**: the official Discord bot's source lands on develop (#12978) (d272ee24ed)
+- **pages**: the Built on credits line on every public page, gated; the hub prints it once (#12187) (3e176e155f)
+- **ecosystem**: six more built_on credits; verify CentOS Stream + SANA licenses (#12136) (732aaeb012)
+- **family-kit**: credit what we build on in every page's About this OS panel (#12146) (db760679d4)
+- **contributing**: every public brick gets the contribution spine, derived from the registry; fixes a 404 in the shipped guides (cb7c0f0f12)
+- **awm,awrecover**: incremental awm backups; awrecover history + find (#11167) (d7ed9a0329)
+
+### Fixed
+
+- **awm**: split the joined line in _cmd_recall -- every awm command died with IndentationError (#14875) (65eb12536f)
+- **awgit**: CRLF reconciliation asks the right repo (cwd=root) (#12436) (7eca8c736c)
+- **awstorage,awm**: version tests assert carriers AGREE, not a hardcoded literal (ea47e32801)
+- **awdk**: adk doctor exits 0 on a healthy box, passthrough verbs take leading flags, awrise manifest ships (#10207) (1bf6fb99b6)
+
 ## 0.6.0 (unreleased, 2026-09-27)
 
 ### Fixed (sixth review, 2026-09-28)
