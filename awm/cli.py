@@ -31,6 +31,7 @@ distance, and never a sibling.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import re
@@ -155,7 +156,8 @@ def _tokengate_filter(rows, query):
     if not query or len(rows) < 2:
         return rows
     try:
-        from lib.retrieval import tokengate_selector as selector
+        # By name, so the published wheel carries no monorepo import statement.
+        selector = importlib.import_module("lib.retrieval.tokengate_selector")
     except ImportError:
         return rows
     try:

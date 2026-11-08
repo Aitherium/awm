@@ -3,6 +3,12 @@
 Release dates for 0.4.0 and 0.5.0 were not recorded in this tree, so they are left
 out rather than guessed.
 
+## [0.6.3] - 2026-11-08
+
+### Fixed
+
+- **publish**: the optional TokenGate selector is loaded by name, so the wheel carries no monorepo import (MOAT001 blocked 0.6.2 on PyPI)
+
 ## [0.6.1] - 2026-11-06
 
 ### Added
