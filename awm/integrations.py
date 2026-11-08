@@ -75,6 +75,26 @@ def stale_symbols(text: str, graph_root: Path) -> Optional[List[str]]:
     return stale
 
 
+def graph_root_for(start: Optional[Path] = None) -> Optional[str]:
+    """The repo root enclosing ``start`` (default: cwd) when awgraph has indexed it.
+
+    Stamped into a memory's meta at write time so a later recall can judge the
+    memory's code names against the graph of the repo it was written about,
+    with no ``--graph`` flag and from any directory. ``None`` when awgraph is
+    absent, there is no enclosing repo, or the repo has no index: an unjudgeable
+    memory is left unstamped rather than stamped with a root nobody can read.
+    """
+    try:
+        from awgraph import symbols  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    here = Path(start or Path.cwd()).resolve()
+    for d in (here, *here.parents):
+        if (d / ".git").exists():
+            return str(d) if os.path.exists(symbols.store_path(str(d))) else None
+    return None
+
+
 def memory_config_path() -> Path:
     """The file awsettings' ``memory`` domain syncs (same resolution as awsettings)."""
     try:

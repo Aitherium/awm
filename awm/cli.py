@@ -61,8 +61,11 @@ def _store(a, *, read: bool = False) -> MemoryStore:
 
 
 def _cmd_remember(a) -> int:
+    from .integrations import graph_root_for
+    root = graph_root_for()
     with _store(a) as st:
-        m = st.remember(Scope.parse(a.scope), a.key, a.value, kind=a.kind)
+        m = st.remember(Scope.parse(a.scope), a.key, a.value, kind=a.kind,
+                        meta={"graph_root": root} if root else None)
     print(f"remembered {m.key} at {m.scope}")
     return 0
 
@@ -170,24 +173,43 @@ def _cmd_recall(a) -> int:
         rows = st.recall(resolve(a.scope, user=a.user), query=a.query, limit=a.limit,
                          kind=a.kind, as_of=as_of)
     rows = _tokengate_filter(rows, a.query)
-    if a.json:
-        print(json.dumps([r.to_dict() for r in rows], indent=2))
-        return 0
-    if not rows:
-        print("no memories visible from this scope")
-        return 0
     stale_note = ""
+    gone_by_row: dict = {}
     if a.graph:
         from .integrations import stale_symbols
         judged = [(r, stale_symbols(r.value, Path(a.graph).expanduser())) for r in rows]
         if any(s is None for _r, s in judged):
             stale_note = f"(awgraph: no index for {a.graph} or awgraph not installed)"
+        else:
+            gone_by_row = {id(r): s for r, s in judged}
+    else:
+        # A memory stamped at write time with the repo it was written in is judged
+        # against THAT repo's graph, unasked: staleness is the reader's problem,
+        # and a reader who has to remember a flag never finds out.
+        from .integrations import stale_symbols
+        for r in rows:
+            root = (r.meta or {}).get("graph_root")
+            if root:
+                s = stale_symbols(r.value, Path(root))
+                if s:
+                    gone_by_row[id(r)] = s
+    if a.json:
+        out = []
+        for r in rows:
+            d = r.to_dict()
+            if gone_by_row.get(id(r)):
+                d["stale"] = gone_by_row[id(r)]
+            out.append(d)
+        print(json.dumps(out, indent=2))
+        return 0
+    if not rows:
+        print("no memories visible from this scope")
+        return 0
     for r in rows:
         line = f"[{r.weight:.2f}] {r.scope:28} {r.key:20} {r.value[:60]}"
-        if a.graph and not stale_note:
-            gone = next(s for rr, s in judged if rr is r)
-            if gone:
-                line += f"  STALE: {', '.join(gone[:4])} not in the code graph"
+        gone = gone_by_row.get(id(r))
+        if gone:
+            line += f"  STALE: {', '.join(gone[:4])} not in the code graph"
         print(line)
     if stale_note:
         print(stale_note, file=sys.stderr)

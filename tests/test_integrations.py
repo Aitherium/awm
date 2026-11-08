@@ -105,3 +105,51 @@ def test_backing_up_an_unchanged_db_again_stores_nothing_new(tmp_path):
     idx = load_index(snaps)
     assert idx["b1"].meta["new_bytes"] > 0
     assert idx["b2"].meta["new_bytes"] == 0
+
+
+def test_remember_stamps_graph_root_and_recall_flags_stale_unasked(tmp_path, monkeypatch,
+                                                                   capsys):
+    """I10: the repo is stamped at write; recall judges it with no --graph flag."""
+    import awm.integrations as integ
+    db = tmp_path / "m.db"
+    root = str(tmp_path / "repo")
+    monkeypatch.setattr(integ, "graph_root_for", lambda start=None: root)
+    seen = []
+
+    def fake_stale(text, graph_root):
+        seen.append(str(graph_root))
+        return ["deleted_helper"]
+
+    monkeypatch.setattr(integ, "stale_symbols", fake_stale)
+    assert main(["--db", str(db), "remember", "--scope", "a:b:c", "--key", "rbac",
+                 "--value", MEM]) == 0
+    row = MemoryStore(db).recall(Scope.parse("a:b:c"))[0]
+    assert row.meta.get("graph_root") == root
+    capsys.readouterr()
+    assert main(["--db", str(db), "recall", "--scope", "a:b:c"]) == 0
+    assert "STALE: deleted_helper" in capsys.readouterr().out
+    assert seen == [root]
+    assert main(["--db", str(db), "recall", "--scope", "a:b:c", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["stale"] == ["deleted_helper"]
+
+
+def test_unindexed_repo_is_not_stamped(tmp_path, monkeypatch):
+    import awm.integrations as integ
+    db = tmp_path / "m.db"
+    monkeypatch.setattr(integ, "graph_root_for", lambda start=None: None)
+    assert main(["--db", str(db), "remember", "--scope", "a:b:c", "--key", "k",
+                 "--value", "v"]) == 0
+    assert "graph_root" not in MemoryStore(db).recall(Scope.parse("a:b:c"))[0].meta
+
+
+def test_graph_root_for_needs_an_index(tmp_path, monkeypatch):
+    symbols = pytest.importorskip("awgraph.symbols")
+    from awm.integrations import graph_root_for
+    (tmp_path / ".git").mkdir()
+    sub = tmp_path / "pkg"
+    sub.mkdir()
+    store = tmp_path / "idx.db"
+    monkeypatch.setattr(symbols, "store_path", lambda root: str(store))
+    assert graph_root_for(sub) is None          # repo found, no index yet
+    store.write_bytes(b"x")
+    assert graph_root_for(sub) == str(tmp_path.resolve())
