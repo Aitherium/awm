@@ -37,6 +37,7 @@ sibling, never a `LIKE`.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
@@ -524,6 +525,27 @@ def predict_outcome(store: "MemoryStore", scope: Scope, state: WorldState, actio
 
 
 # ------------------------------------------------------------ observe
+def _publish_surprise(surprise: Optional[float], prediction_source: str, slots: int,
+                      source: str, ts: float) -> None:
+    """Report a scored transition on the AitherOS surprise bus -- a NO-OP outside it.
+
+    ``awm`` is a brick that must run alone, so the bus is looked up by name (the
+    published wheel carries no monorepo import) and only inside AitherOS is it found.
+    Numbers and labels only: no scope, no slot names, no values. An unscored
+    transition (``surprise`` None) reports nothing."""
+    if surprise is None:
+        return
+    try:
+        bus = importlib.import_module("lib.cognitive.surprise_bus")
+    except ImportError:
+        return
+    try:
+        bus.publish_surprise("awm", surprise, domain=f"awm.{source}"[:60], ts=ts,
+                             detail={"prediction": prediction_source, "slots": slots})
+    except Exception:  # noqa: BLE001 - telemetry never breaks a recorded transition
+        return
+
+
 def observe_transition(store: "MemoryStore", scope: Scope, before: WorldState, action: Any,
                        after: WorldState, predicted: Any = None, *,
                        predictor: Any = None, source: str = "observed") -> Transition:
@@ -577,6 +599,8 @@ def observe_transition(store: "MemoryStore", scope: Scope, before: WorldState, a
         tid = int(cur.lastrowid or 0)
         from . import _pubid  # stdlib-only sibling
         pub = _pubid.public_id(_pubid.file_key(store._db), "transitions", tid)
+    _publish_surprise(surprise, pred.source, len(set(pred.delta) | set(observed)),
+                      source, after.ts)
     return Transition(id=pub, rid=tid, scope=str(scope), state_digest=before.digest, action=act,
                       delta=observed, next_digest=after.digest, ts=after.ts,
                       before_ts=before.ts, source=source,
