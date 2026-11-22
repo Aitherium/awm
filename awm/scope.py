@@ -180,3 +180,70 @@ class Scope:
 def visible_scopes(query: Scope) -> List[Scope]:
     """The query scope plus its ancestors, nearest first."""
     return [query, *query.ancestors()]
+
+
+# ---------------------------------------------------------------------------
+# Reserved user-id prefixes (P0 scope registry, 2026-11-18)
+# ---------------------------------------------------------------------------
+#
+# The middle segment of a scope is normally a person's user id. Two kinds of
+# MEMORY OWNER are not people and must never be mistaken for one:
+#
+#   ws-<workspace id>   memories that belong to a WORKSPACE, not a member. They
+#                       survive that member leaving and are readable by every
+#                       member of the workspace at workspace depth.
+#   agent-<agent id>    memories that belong to an AGENT (its own experience),
+#                       separate from its operator's `user:` memories.
+#
+# A reserved prefix is a RESERVATION, not a convention: `Scope(...)` already
+# forbids the separator inside a segment, and these helpers make the spelling
+# canonical so a caller cannot invent `workspace_x` vs `ws-x` and split the same
+# owner across two subtrees. `reserved_subject` tells a reader which rung an
+# owner sits on, so a UI never renders an agent's memory as a person's.
+
+USER_PREFIX_WORKSPACE = "ws-"
+USER_PREFIX_AGENT = "agent-"
+
+#: The canonical workspace-id prefix used by the AitherOS scope registry. Defined
+#: BEFORE its users so a reader never has to look below a function to resolve it.
+WORKSPACE_ID_CANON_PREFIX = "ws_"
+
+
+def workspace_user(workspace_id: str) -> str:
+    """The reserved user segment owning workspace-wide memories for `workspace_id`.
+
+    ``ws_acme`` and ``acme`` both become ``ws-acme``: the SAME owner, one spelling.
+    An empty id returns ``ws-`` which :class:`Scope` rejects -- callers must carry
+    a real workspace rather than silently owning the root.
+    """
+    raw = str(workspace_id or "").strip().lower()
+    if raw.startswith("ws_"):
+        raw = raw[len("ws_"):]
+    elif raw.startswith(WORKSPACE_ID_CANON_PREFIX):
+        raw = raw[len(WORKSPACE_ID_CANON_PREFIX):]
+    return USER_PREFIX_WORKSPACE + raw
+
+
+def agent_user(agent_id: str) -> str:
+    """The reserved user segment owning an agent's own memories for `agent_id`."""
+    raw = str(agent_id or "").strip().lower()
+    if raw.startswith(USER_PREFIX_AGENT):
+        raw = raw[len(USER_PREFIX_AGENT):]
+    return USER_PREFIX_AGENT + raw
+
+
+def reserved_subject(user_segment: str) -> Tuple[str, str]:
+    """Classify a middle segment: ``("workspace"|"agent"|"user"|"", id)``.
+
+    ``("user", segment)`` means an ordinary person's id; ``("", "")`` means an
+    empty/unknown segment. Callers use this to keep a non-human owner out of a
+    "who wrote this" UI and to scope a workspace memory to its members.
+    """
+    seg = str(user_segment or "")
+    if seg.startswith(USER_PREFIX_AGENT):
+        return "agent", seg[len(USER_PREFIX_AGENT):]
+    if seg.startswith(USER_PREFIX_WORKSPACE):
+        return "workspace", seg[len(USER_PREFIX_WORKSPACE):]
+    if not seg or seg == WILDCARD:
+        return "", ""
+    return "user", seg
