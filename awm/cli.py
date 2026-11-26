@@ -698,9 +698,12 @@ def main(argv=None) -> int:
         _sv = locals().get("argv")
         if _aw_state.cli_banner(_sv if _sv is not None else __import__("sys").argv[1:]):
             return 0
+    from . import __version__
+
     ap = argparse.ArgumentParser(prog="awm", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--version", action="version", version=f"awm {__version__}")
+    ap.add_argument("--self-test", "--selftest", dest="self_test", action="store_true")
     ap.add_argument("--db")
     sub = ap.add_subparsers(dest="cmd")
 
